@@ -18,18 +18,15 @@ dotenv.config();
 // Initialize express app
 const app = express();
 const PORT = process.env.PORT || 3001;
-    
-// Middleware
-// More specific CORS setup
+
+// Single CORS middleware configuration
 app.use(cors({
-    origin: true, // or specifically list your frontend URL like 'http://127.0.0.1:5501'
+    origin: process.env.FRONTEND_URL || true, // Use environment variable or allow all
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 }));
 
-
-app.use(cors(corsOptions));
 app.use(express.json());
 app.use(morgan('dev')); // Logging middleware
 
@@ -47,209 +44,99 @@ const validateEventData = (req, res, next) => {
     next();
 };
 
-// Load database
+// Load database with enhanced error handling
 const loadDatabase = async () => {
+    const filePath = join(__dirname, 'db.json');
+    
     try {
-        const filePath = join(__dirname, 'db.json');
-        console.log('Attempting to read from:', filePath); // Debug log
-        
         const data = await fs.readFile(filePath, 'utf8');
-        console.log('Data read successfully:', data); // Debug log
-        
         return JSON.parse(data);
     } catch (error) {
-        console.error('Detailed error:', {
-            message: error.message,
-            code: error.code,
-            path: join(__dirname, 'db.json')
-        });
-        
-        // If file doesn't exist, create it with default structure
         if (error.code === 'ENOENT') {
+            // Initialize with all required arrays and objects
             const defaultData = {
                 event: [],
                 latest: [],
                 summary: {},
                 registration: [],
-                trash: []
+                trash: [],
+                notifications: [] // Initialize notifications array
             };
             
-            await fs.writeFile(
-                join(__dirname, 'db.json'),
-                JSON.stringify(defaultData, null, 2)
-            );
-            
-            return defaultData;
+            try {
+                await fs.writeFile(
+                    filePath,
+                    JSON.stringify(defaultData, null, 2)
+                );
+                return defaultData;
+            } catch (writeError) {
+                throw new Error(`Failed to create database file: ${writeError.message}`);
+            }
         }
         
-        throw new Error(`Failed to load database: ${error.message}`);
+        throw new Error(`Database error: ${error.message}`);
     }
 };
 
-// Save database
+// Save database with enhanced error handling
 const saveDatabase = async (data) => {
+    const filePath = join(__dirname, 'db.json');
+    
     try {
-        await fs.writeFile(
-            join(__dirname, 'db.json'),
-            JSON.stringify(data, null, 2)
-        );
+        await fs.writeFile(filePath, JSON.stringify(data, null, 2));
     } catch (error) {
-        console.error('Error saving database:', error);
-        throw new Error('Failed to save database');
+        throw new Error(`Failed to save database: ${error.message}`);
     }
 };
 
 // Routes
-
-// Get all data
-app.get('/', async (req, res, next) => {
+// Get all data with error response
+app.get('/', async (req, res) => {
     try {
         const allData = await loadDatabase();
         res.status(200).json(allData);
     } catch (error) {
-        next(error);
+        res.status(500).json({
+            error: 'Failed to retrieve data',
+            message: error.message
+        });
     }
 });
 
-// Get all events
-app.get('/event', async (req, res, next) => {
+// Get latest events (corrected property name)
+app.get('/latest', async (req, res) => {
+    try {
+        const allData = await loadDatabase();
+        res.status(200).json(allData.latest); // Using correct property name
+    } catch (error) {
+        res.status(500).json({
+            error: 'Failed to retrieve latest events',
+            message: error.message
+        });
+    }
+});
+
+// Get all events with enhanced error handling
+app.get('/event', async (req, res) => {
     try {
         const allData = await loadDatabase();
         res.status(200).json(allData.event);
     } catch (error) {
-        next(error);
-    }
-});
-
-// Get latest events
-app.get('/latest', async (req, res, next) => {
-    try {
-        const allData = await loadDatabase();
-        res.status(200).json(allData.latestNews);
-    } catch (error) {
-        next(error);
-    }
-});
-
-// Get summary
-app.get('/summary', async (req, res, next) => {
-    try {
-        const allData = await loadDatabase();
-        res.status(200).json(allData.summary);
-    } catch (error) {
-        next(error);
-    }
-});
-
-// Get registration data
-app.get('/registration', async (req, res, next) => {
-    try {
-        const allData = await loadDatabase();
-        res.status(200).json(allData.registration);
-    } catch (error) {
-        next(error);
-    }
-});
-
-// Get trash data
-app.get('/trash', async (req, res, next) => {
-    try {
-        const allData = await loadDatabase();
-        res.status(200).json(allData.trash);
-    } catch (error) {
-        next(error);
-    }
-});
-
-
-app.get('/notifications', async (req, res, next) => {
-    try {
-        const allData = await loadDatabase();
-        res.status(200).json(allData.notifications);
-    } catch (error) {
-        next(error);
-    }
-});
-// Get specific event
-app.get('/event/:event', async (req, res, next) => {
-    try {
-        const allData = await loadDatabase();
-        const eventParam = req.params.event.toLowerCase();
-        const selectedEvent = allData.event.find(
-            item => item.name.toLowerCase() === eventParam
-        );
-        
-        if (!selectedEvent) {
-            return res.status(404).json({
-                error: `Event not found: ${eventParam}`
-            });
-        }
-        
-        res.status(200).json(selectedEvent);
-    } catch (error) {
-        next(error);
-    }
-});
-
-// Restore event from trash
-app.get('/trash/:trash', async (req, res, next) => {
-    try {
-        const allData = await loadDatabase();
-        const trashParam = req.params.trash.toLowerCase();
-        const trashIndex = allData.trash.findIndex(
-            item => item.name.toLowerCase() === trashParam
-        );
-
-        if (trashIndex === -1) {
-            return res.status(404).json({
-                error: 'Event not found in trash'
-            });
-        }
-
-        // Move from trash to events
-        const restoredEvent = allData.trash[trashIndex];
-        allData.event.unshift(restoredEvent);
-        allData.trash.splice(trashIndex, 1);
-
-        
-        // Add notification
-        allData.notifications.unshift({
-            id: uuidv4(),
-            message: `"${trashParam}" has been successfully restored`,
-            timestamp: new Date().toISOString(),
-            type: 'restored_event'
+        res.status(500).json({
+            error: 'Failed to retrieve events',
+            message: error.message
         });
-
-        // Keep only last 50 notifications
-        if (allData.notifications.length > 50) {
-            allData.notifications = allData.notifications.slice(0, 50);
-        }
-
-
-        await saveDatabase(allData);
-        
-        res.status(200).json({
-            message: 'Event restored successfully',
-            event: restoredEvent
-        });
-    } catch (error) {
-        next(error);
     }
 });
 
-// Create new event
-app.post('/event', validateEventData, async (req, res, next) => {
+// Create new event with enhanced validation
+app.post('/event', validateEventData, async (req, res) => {
     try {
         const allData = await loadDatabase();
-        const newEvent = {
-            id: Date.now().toString(),
-            ...req.body,
-            createdAt: new Date().toISOString()
-        };
-
+        
         // Check for duplicate event names
         const existingEvent = allData.event.find(
-            e => e.name.toLowerCase() === newEvent.name.toLowerCase()
+            e => e.name.toLowerCase() === req.body.name.toLowerCase()
         );
 
         if (existingEvent) {
@@ -258,165 +145,49 @@ app.post('/event', validateEventData, async (req, res, next) => {
             });
         }
 
-        allData.event.unshift(newEvent);
-        await saveDatabase(allData);
-
-        res.status(201).json(newEvent);
-    } catch (error) {
-        next(error);
-    }
-});
-
-// Update event
-app.put('/event/:event', async (req, res, next) => {
-    try {
-        const allData = await loadDatabase();
-        const eventParam = req.params.event.toLowerCase();
-        const eventIndex = allData.event.findIndex(
-            item => item.name.toLowerCase() === eventParam
-        );
-
-        if (eventIndex === -1) {
-            return res.status(404).json({
-                error: 'Event not found'
-            });
-        }
-
-        if (Object.keys(req.body).length === 0) {
-            return res.status(400).json({
-                error: 'No data provided to update'
-            });
-        }
-
-        // Update event while preserving existing fields
-        allData.event[eventIndex] = {
-            ...allData.event[eventIndex],
+        const newEvent = {
+            id: uuidv4(), // Using UUID instead of timestamp for better uniqueness
             ...req.body,
-            updatedAt: new Date().toISOString()
+            createdAt: new Date().toISOString()
         };
 
+        allData.event.unshift(newEvent);
         
-        // Add notification
+        // Add notification for new event
         allData.notifications.unshift({
             id: uuidv4(),
-            message: `"${eventParam}" was updated successfully`,
+            message: `New event "${newEvent.name}" has been created`,
             timestamp: new Date().toISOString(),
-            type: 'update'
+            type: 'new_event'
         });
 
-        // Keep only last 50 notifications
-        if (allData.notifications.length > 50) {
-            allData.notifications = allData.notifications.slice(0, 50);
-        }
-
-
-        await saveDatabase(allData);
-        
-        res.status(200).json(allData.event[eventIndex]);
-    } catch (error) {
-        next(error);
-    }
-});
-
-// Delete event (move to trash)
-app.delete('/event/:event', async (req, res, next) => {
-    try {
-        const allData = await loadDatabase();
-        const eventParam = req.params.event.toLowerCase();
-        const eventIndex = allData.event.findIndex(
-            item => item.name.toLowerCase() === eventParam
-        );
-
-        if (eventIndex === -1) {
-            return res.status(404).json({
-                error: 'Event not found'
-            });
-        }
-
-        // Move to trash
-        const deletedEvent = allData.event[eventIndex];
-        deletedEvent.deletedAt = new Date().toISOString();
-        allData.trash.push(deletedEvent);
-        
-        // Remove from events
-        allData.event.splice(eventIndex, 1);
-        
-        // Add notification
-        allData.notifications.unshift({
-            id: uuidv4(),
-            message: `Event "${deletedEvent.name}" has been temporary deleted, you can recover it later from trash`,
-            timestamp: new Date().toISOString(),
-            type: 'temporary_delete'
-        });
-
-        // Keep only last 50 notifications
-        if (allData.notifications.length > 50) {
-            allData.notifications = allData.notifications.slice(0, 50);
-        }
-
-
-        await saveDatabase(allData);
-        
-        res.status(200).json({
-            message: 'Event moved to trash successfully',
-            event: deletedEvent
-        });
-    } catch (error) {
-        next(error);
-    }
-});
-
-app.delete('/trash/:trash', async (req, res, next) => {
-    try {
-        const allData = await loadDatabase();
-        const trashParam = req.params.trash.toLowerCase();
-        const trashIndex = allData.trash.findIndex(
-            item => item.name.toLowerCase() === trashParam
-        );
-
-        if (trashIndex === -1) {
-            return res.status(404).json({
-                error: 'Event not found in trash'
-            });
-        }
-
-        // Remove from trash
-        const deletedEvent = allData.trash.splice(trashIndex, 1)[0];
-
-        // Add notification
-        allData.notifications.unshift({
-            id: uuidv4(),
-            message: `Event "${deletedEvent.name}" has been permanently deleted`,
-            timestamp: new Date().toISOString(),
-            type: 'permanent_delete'
-        });
-
-        // Keep only last 50 notifications
+        // Maintain notifications limit
         if (allData.notifications.length > 50) {
             allData.notifications = allData.notifications.slice(0, 50);
         }
 
         await saveDatabase(allData);
-        
-        res.status(200).json({
-            message: 'Event permanently deleted',
-            event: deletedEvent
-        });
+        res.status(201).json(newEvent);
     } catch (error) {
-        next(error);
+        res.status(500).json({
+            error: 'Failed to create event',
+            message: error.message
+        });
     }
 });
 
-
-// Delete a specific notification
-app.delete('/notifications/:id', async (req, res, next) => {
+// Delete notification with enhanced error handling
+app.delete('/notifications/:id', async (req, res) => {
     try {
         const allData = await loadDatabase();
         const { id } = req.params;
         
-        // Initialize notifications array if it doesn't exist
         if (!Array.isArray(allData.notifications)) {
             allData.notifications = [];
+            await saveDatabase(allData);
+            return res.status(404).json({
+                error: 'Notification not found'
+            });
         }
 
         const notificationIndex = allData.notifications.findIndex(
@@ -429,9 +200,7 @@ app.delete('/notifications/:id', async (req, res, next) => {
             });
         }
 
-        // Remove the notification
         const deletedNotification = allData.notifications.splice(notificationIndex, 1)[0];
-
         await saveDatabase(allData);
         
         res.status(200).json({
@@ -439,17 +208,19 @@ app.delete('/notifications/:id', async (req, res, next) => {
             notification: deletedNotification
         });
     } catch (error) {
-        console.error('Error deleting notification:', error);
-        next(error);
+        res.status(500).json({
+            error: 'Failed to delete notification',
+            message: error.message
+        });
     }
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error(err.stack);
+    console.error('Error:', err);
     res.status(500).json({
         error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+        message: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred'
     });
 });
 
