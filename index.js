@@ -4,7 +4,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import mongoose from 'mongoose';
 import connectDb from './config/dbConnection.js';
-import Event from './models/Event.js';
+import Event from './models/event.js';
 import TrashEvent from './models/TrashEvent.js';
 import Notification from './models/Notification.js';
 import Summary from './models/summary.js';
