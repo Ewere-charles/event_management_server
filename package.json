@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",
+  "files": [
+    "index.js",
+    "config/**/*",
+    "models/**/*"
+  ],
   "engines": {
     "node": ">=18.x"
   },
