@@ -1,3 +1,5 @@
+//config/dbConnection
+
 import mongoose from "mongoose";
 
 const connectDb = async (retries = 5) => {
