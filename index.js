@@ -8,7 +8,7 @@ import Event from './models/Event.js';
 import TrashEvent from './models/TrashEvent.js';
 import Notification from './models/Notification.js';
 import Summary from './models/Summary.js';
-import latestNews from './models/LatestNews.js';
+import LatestNews from './models/LatestNews.js';
 import Registration from './models/Registration.js';
 
 // Load environment variables
